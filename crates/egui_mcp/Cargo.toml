@@ -1,17 +1,17 @@
 [package]
 name = "egui_mcp"
-version.workspace = true
+version = "0.2.0"
 authors = ["Lucas Meurer <hi@lucasmerlin.me>"]
 description = "MCP server that drives live egui apps over the egui_inspection protocol"
 edition.workspace = true
 rust-version.workspace = true
-homepage.workspace = true
+homepage = "https://github.com/rerun-io/egui_tiles"
 license.workspace = true
 readme = "README.md"
-repository.workspace = true
+repository = "https://github.com/rerun-io/egui_tiles"
 categories = ["gui", "development-tools::testing"]
 keywords = ["egui", "mcp", "accesskit", "inspector", "testing"]
-include = ["../../LICENSE-APACHE", "../../LICENSE-MIT", "**/*.rs", "Cargo.toml"]
+include = ["**/*.rs", "Cargo.toml"]
 publish = true
 
 [package.metadata.docs.rs]
@@ -23,8 +23,8 @@ name = "egui-mcp"
 path = "src/main.rs"
 
 [dependencies]
-egui = { version = "0.36.0", default-features = false }
-egui_inspection = { version = "0.36.0", default-features = false }
+egui.workspace = true
+egui_inspection.workspace = true
 accesskit.workspace = true
 accesskit_consumer.workspace = true
 base64.workspace = true

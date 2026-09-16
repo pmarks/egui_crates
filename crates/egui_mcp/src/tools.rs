@@ -334,6 +334,8 @@ fn resolve_in_tree(snap: &TreeSnapshot, target: &Target) -> ToolResult<(Option<I
     let bounds = view.bounds.ok_or("node has no bounds — can't target")?;
     // `widget_detail` already returns logical-point bounds, so the center needs no further scaling.
     let (cx, cy) = bounds.center();
+    // AccessKit measures in f64, egui in f32; a screen coordinate fits either way.
+    #[expect(clippy::cast_possible_truncation)]
     let center = egui::Pos2::new(cx as f32, cy as f32);
     Ok((Some(view.id), center))
 }
@@ -1018,6 +1020,8 @@ impl UiServer {
                 _ => Vec::new(),
             };
             let num_matches = tree::count(&matches);
+            #[expect(clippy::cast_possible_truncation)]
+            // a tree with >4 billion matches is not a thing
             let matched_ok = !has_filter || num_matches as u32 >= args.min_matches;
             if matched_ok && steps_waited >= args.min_steps {
                 return Ok(CallToolResult::structured(
@@ -1234,7 +1238,7 @@ Conventions:
 - Everything is in logical points, one shared coordinate frame: raw `pos`, `resize` dimensions, the `bounds` from `get_widget`, and a default (`pixels_per_point: 1.0`) `screenshot`. So a widget's `bounds` center is exactly where to `click`, and a pixel in the screenshot is a logical point. There is no fixed screen size; use `resize` to set the viewport."#;
 
 /// How long a client may keep the tool list without asking again.
-const TOOL_LIST_TTL: Duration = Duration::from_secs(5 * 60);
+const TOOL_LIST_TTL: Duration = Duration::from_mins(5);
 
 /// The `tools/list` result, with the cache hints MCP 2026-07-28 (SEP-2549) requires.
 ///
@@ -1244,7 +1248,7 @@ const TOOL_LIST_TTL: Duration = Duration::from_secs(5 * 60);
 /// cached and shared freely.
 fn tool_list(tools: Vec<Tool>) -> ListToolsResult {
     ListToolsResult::with_all_items(tools)
-        .with_ttl_ms(TOOL_LIST_TTL.as_millis() as u64)
+        .with_ttl_ms(u64::try_from(TOOL_LIST_TTL.as_millis()).unwrap_or(u64::MAX))
         .with_cache_scope(CacheScope::Public)
 }
 
@@ -1299,7 +1303,6 @@ impl ServerHandler for Server {
 mod tests {
     use std::fmt::Write as _;
 
-    use rmcp::ServerHandler as _;
     use serde_json::json;
 
     use super::*;
