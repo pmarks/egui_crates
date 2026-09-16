@@ -5,6 +5,10 @@
 [default]
 extend-ignore-re = [
     "Isse", # it's a name
+
+    # Widget ids in the test snapshots are hex, and hex spells words: `4ba` reads as `by`,
+    # `3daa` as `data`.
+    '"id": "[0-9a-f]+"',
 ]
 
 [default.extend-words]
