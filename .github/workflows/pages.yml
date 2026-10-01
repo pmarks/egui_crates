@@ -1,6 +1,12 @@
 name: Github Pages
 
-# By default, runs if you push to main. keeps your deployed app in sync with main branch.
+# Deploys the egui_table demo to https://rerun-io.github.io/egui_tiles/ on every
+# push to main.
+#
+# This uploads the built site as an artifact and deploys it, which needs the
+# repository's Pages source set to "GitHub Actions". The alternative — pushing
+# the build to a `gh-pages` branch — would commit a multi-megabyte wasm blob on
+# every push to main.
 on:
   push:
     branches:
@@ -12,11 +18,22 @@ on:
 #       - published
 
 permissions:
-  contents: write # for committing to gh-pages branch.
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and let a running one finish so a half-published site is
+# never left behind.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build-github-pages:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4 # repo checkout
         with:
@@ -41,10 +58,10 @@ jobs:
         run: (cd crates/egui_table_demo && ../../trunk build --release --public-url $public_url)
         env:
           public_url: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v3
         with:
-          folder: crates/egui_table_demo/dist
-          # this option will not maintain any history of your previous pages deployment
-          # set to false if you want all page build to be committed to your gh-pages branch history
-          single-commit: true
+          path: crates/egui_table_demo/dist
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
