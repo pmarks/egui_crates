@@ -78,14 +78,13 @@ impl JsonSchema for Id {
         schemars::json_schema!({
             "type": "string",
             "pattern": "^[0-9a-fA-F]{1,16}$",
-            "description": "Widget id as `widget_tree` reports it: lower-case hex, no prefix.",
+            "description": "A widget `id` from `widget_tree`.",
         })
     }
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct WidgetDetail {
-    /// Node id, used with `click`, `type_text`, and `get_widget`.
     pub id: Id,
     pub role: String,
     pub label: Option<String>,
@@ -97,26 +96,27 @@ pub struct WidgetDetail {
     pub parent_id: Option<Id>,
 }
 
-/// A widget in `widget_tree`'s hierarchical result.
-///
-/// Only matching widgets appear; each one nests the matches found in its own subtree. A
-/// non-matching widget contributes its matches to its nearest matching ancestor, so a
-/// `children` entry is not necessarily a direct child in the app's tree.
-///
-/// Deliberately leaner than [`WidgetDetail`]: a whole tree of `bounds` is a lot of numbers for an
-/// agent to read past, and actions take an `id` anyway. `get_widget` has the full detail.
-///
-/// A widget that says nothing — no children, no `label`, no `value` and no role — is dropped
-/// entirely, as is a `TextRun` that only repeats its parent's text.
-///
-/// `label` and `value` are cut short at [`MAX_TEXT_CHARS`], marked with a trailing
-/// [`TRUNCATION_MARKER`].
+/// A widget in `widget_tree`'s result.
+//
+// Only matching widgets appear; each one nests the matches found in its own subtree. A
+// non-matching widget contributes its matches to its nearest matching ancestor, so a
+// `children` entry is not necessarily a direct child in the app's tree.
+//
+// Deliberately leaner than [`WidgetDetail`]: a whole tree of `bounds` is a lot of numbers for an
+// agent to read past, and actions take an `id` anyway. `get_widget` has the full detail.
+//
+// A widget that says nothing — no children, no `label`, no `value` and no role — is dropped
+// entirely, as is a `TextRun` that only repeats its parent's text.
+//
+// `label` and `value` are cut short at [`MAX_TEXT_CHARS`], marked with a trailing
+// [`TRUNCATION_MARKER`].
+//
+// These notes are `//`, not `///`: schemars turns doc comments into the schema an agent reads.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Widget {
-    /// Node id, used with `click`, `type_text`, and `get_widget`.
     pub id: Id,
 
-    /// Omitted for a role of `Unknown`, which carries no information.
+    /// Absent for a role of `Unknown`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
 
@@ -126,7 +126,7 @@ pub struct Widget {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
 
-    /// Each flag is omitted when false — that is the state of nearly every widget.
+    // Each flag is omitted when false — that is the state of nearly every widget.
     #[serde(default, skip_serializing_if = "is_false")]
     pub focused: bool,
 
@@ -136,12 +136,11 @@ pub struct Widget {
     #[serde(default, skip_serializing_if = "is_false")]
     pub hidden: bool,
 
-    /// `default` keeps the derived schema honest: a leaf omits the field entirely.
+    // `default` keeps the derived schema honest: a leaf omits the field entirely.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Self>,
 
-    /// How many of this widget's children `limit` left out. Query again with this widget's
-    /// `id` as `root` to see them, or raise `limit`, or narrow the filter.
+    /// How many children `limit` left out; pass this widget's `id` as `root` to see them.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub omitted_children: usize,
 }
@@ -231,25 +230,22 @@ impl RectF {
     }
 }
 
-/// The widget-matching constraints shared by `widget_tree`'s filter and the action `Target`s.
-///
-/// An optional `role` plus up to one text predicate. All are case-insensitive and combined with
-/// logical AND; an all-`None` `Query` matches every widget.
+// The widget-matching constraints shared by `widget_tree`'s filter and the action `Target`s.
+//
+// An optional `role` plus up to one text predicate. All are case-insensitive and combined with
+// logical AND; an all-`None` `Query` matches every widget.
+//
+// The field docs below are what an agent reads, once per tool that takes a `Query`, so they stay
+// short; the server instructions explain once why `content_contains` is the one to prefer.
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct Query {
-    /// Case-insensitive substring match against *either* `label` or `value`. Prefer this when you
-    /// just want "the widget showing this text" and don't care which field holds it — it's the
-    /// most robust choice across widget kinds.
+    /// Case-insensitive substring of the widget's `label` or `value` (preferred).
     pub content_contains: Option<String>,
     /// Role name, e.g. `Button`, `Label`, `TextInput` (case-insensitive).
-    /// An unrecognized role is rejected with an error that lists the roles present in the tree.
     pub role: Option<String>,
-    /// Case-insensitive substring match against the widget's `label` (its accessible name) only.
-    /// Note that `Label`/monospace widgets carry their text in `value`, not `label` — for those,
-    /// use `content_contains` (or `value_contains`).
+    /// Case-insensitive substring of the widget's `label` only.
     pub label_contains: Option<String>,
-    /// Case-insensitive substring match against the widget's `value` only (e.g. a text field's
-    /// contents, or a `Label`'s text).
+    /// Case-insensitive substring of the widget's `value` only.
     pub value_contains: Option<String>,
 }
 
@@ -311,13 +307,12 @@ impl Query {
     }
 }
 
-/// A subtree to leave out of a query: whatever matches, plus everything below it.
-///
-/// Either a widget `id` or the same constraints a [`Query`] takes. An exclusion with neither set
-/// matches nothing, rather than swallowing the whole tree.
+// A subtree to leave out of a query: whatever matches, plus everything below it.
+//
+// Either a widget `id` or the same constraints a [`Query`] takes. An exclusion with neither set
+// matches nothing, rather than swallowing the whole tree.
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct Exclusion {
-    /// Id of the widget to leave out, from a previous query.
     #[serde(default)]
     pub id: Option<Id>,
 
@@ -348,28 +343,21 @@ pub struct QueryFilter {
     #[serde(flatten)]
     pub query: Query,
 
-    /// Walk this widget's subtree instead of the whole app — the way to see the children a
-    /// `limit` left out, by passing the id of the widget that reported `omitted_children`.
+    /// Walk only this widget's subtree, e.g. one that reported `omitted_children`.
     #[serde(default)]
     pub root: Option<Id>,
 
-    /// A subtree to leave out — e.g. the host's own agent panel, whose text would otherwise
-    /// answer every text query before the app under test does.
+    /// Leave out a subtree, by `id` or by the constraints the filter takes, e.g. a panel whose
+    /// text would otherwise answer every query.
     #[serde(default)]
     pub exclude: Option<Exclusion>,
 
-    /// Skip the widgets egui reports as hidden — scrolled out of view, or inside a collapsed
-    /// section. On by default: a hidden widget can't be clicked or read by a user, so it is
-    /// rarely the one an agent is looking for. Set it to `false` to see what a `ScrollArea` or
-    /// a closed `CollapsingHeader` is holding.
+    /// Skip widgets egui reports as hidden: scrolled out of view, or in a collapsed section.
     #[serde(default = "default_true")]
     pub visible_only: bool,
 
-    /// Most widgets to return, counted over the whole forest and not per level. The default of
-    /// 200 keeps a whole-app query down to something an agent can read.
-    ///
-    /// Overflow is cut from the bottom up, so the top of the hierarchy always survives, and
-    /// each widget that lost children reports how many in its `omitted_children`.
+    /// Most widgets to return. The deepest levels are cut first, and a widget that lost
+    /// children reports how many in `omitted_children`.
     #[serde(default = "default_limit")]
     pub limit: usize,
 }

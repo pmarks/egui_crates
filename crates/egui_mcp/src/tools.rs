@@ -278,17 +278,16 @@ type ToolResult<T> = Result<T, ToolError>;
 // Target — locator OR raw position, shared by click / hover / scroll / drag.
 // ---------------------------------------------------------------------------------------
 
+/// A widget, by `id`, `role` and/or a text match, or a raw `pos`.
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct Target {
-    /// Widget id from `widget_tree`.
     #[serde(default)]
     pub id: Option<Id>,
 
-    /// Widget-matching constraints (`role` and/or a text predicate); see `widget_tree`.
     #[serde(flatten)]
     pub query: Query,
 
-    /// Raw position in logical points (use instead of locator fields).
+    /// Raw position in logical points, instead of a widget.
     #[serde(default)]
     pub pos: Option<Pos2Lit>,
 }
@@ -346,18 +345,14 @@ fn resolve_in_tree(snap: &TreeSnapshot, target: &Target) -> ToolResult<(Option<I
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AttachArgs {
-    /// Host the app's inspection port is on.
-    /// Defaults to `127.0.0.1`.
     #[serde(default = "default_host")]
     pub host: String,
 
-    /// Port the app is listening on.
-    /// Defaults to `5719` (`egui_inspection`'s default).
+    /// The app's inspection port.
     #[serde(default = "default_port")]
     pub port: u16,
 
-    /// How long to keep retrying the connection, in seconds.
-    /// Defaults to 10.
+    /// How long to keep retrying, in seconds. Defaults to 10.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
 }
@@ -375,13 +370,12 @@ pub struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScreenshotArgs {
-    /// Output resolution in pixels per logical point.
-    /// Defaults to `1.0`, which makes screenshot pixels line up 1:1 with the logical coordinates used by `click`/`widget_tree`.
-    /// Higher values give a sharper image, capped at the display's native scale (no upscaling).
+    /// Higher is sharper, up to the display's native scale; the default of 1 lines pixels up
+    /// with logical points.
     #[serde(default = "default_pixels_per_point")]
     pub pixels_per_point: f32,
 
-    /// If set, also write the PNG to this path on the machine running the MCP server (in addition to returning it inline).
+    /// Also write the PNG to this path, on the machine running the MCP server.
     #[serde(default)]
     pub save_path: Option<String>,
 }
@@ -392,7 +386,6 @@ fn default_pixels_per_point() -> f32 {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetWidgetArgs {
-    /// Widget id, as returned by `widget_tree`.
     pub id: Id,
 }
 
@@ -407,7 +400,7 @@ pub struct PressKeyModifiers {
     #[serde(default)]
     pub mac_cmd: bool,
 
-    /// = Cmd on Mac / Ctrl on Win+Linux.
+    /// Cmd on Mac, Ctrl elsewhere.
     #[serde(default)]
     pub command: bool,
 }
@@ -446,8 +439,7 @@ async fn with_modifiers<T>(
     Ok(value)
 }
 
-/// Which mouse button a `click`/`drag` uses. `left`/`right` are accepted as aliases for
-/// `primary`/`secondary`.
+/// Also accepts `left` and `right`.
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PointerButtonArg {
@@ -478,7 +470,6 @@ pub struct ClickArgs {
     #[serde(flatten)]
     pub target: Target,
 
-    /// `primary`/`secondary`/`middle`/`extra1`/`extra2` (or aliases `left`/`right`). Defaults to `primary`.
     #[serde(default)]
     pub button: PointerButtonArg,
 
@@ -504,8 +495,7 @@ pub struct ScrollArgs {
     #[serde(flatten)]
     pub target: Target,
 
-    /// Logical points.
-    /// Positive Y scrolls down (reveals content below); positive X scrolls right.
+    /// Logical points: positive `y` scrolls down, positive `x` right.
     pub delta: Pos2Lit,
     #[serde(default)]
     pub modifiers: PressKeyModifiers,
@@ -515,6 +505,8 @@ pub struct ScrollArgs {
 pub struct DragArgs {
     pub start: Target,
     pub end: Target,
+
+    /// Pointer moves between press and release.
     #[serde(default = "default_drag_steps")]
     pub steps: u32,
     #[serde(default)]
@@ -533,8 +525,6 @@ pub struct ResizeArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct WaitForArgs {
-    /// Which widgets to wait for (`content_contains` and/or `role`/`label_contains`/`value_contains`);
-    /// see `widget_tree`. Omit every constraint to wait on `min_steps` alone.
     #[serde(flatten)]
     pub query: Query,
     #[serde(default = "default_wait_timeout")]
@@ -542,8 +532,7 @@ pub struct WaitForArgs {
     #[serde(default = "default_min_matches")]
     pub min_matches: u32,
 
-    /// Also wait until at least this many frames have rendered since the call began.
-    /// Use it to let animations, tooltips, or other time/frame-driven UI settle (e.g. after a `hover`); `0` means don't wait for frames.
+    /// Frames to let render after the call begins, e.g. for a tooltip or animation to settle.
     #[serde(default)]
     pub min_steps: u64,
 }
@@ -560,19 +549,16 @@ fn default_min_matches() -> u32 {
 pub struct TypeTextArgs {
     pub text: String,
 
-    /// Optional focus target: widget id from `widget_tree` to focus before typing.
-    /// Omit all locator fields to type into whatever is currently focused.
     #[serde(default)]
     pub id: Option<Id>,
 
-    /// Optional focus target by match (`content_contains` and/or `role`/`label_contains`/`value_contains`);
-    /// see `widget_tree`. Omit all locator fields to type into whatever is currently focused.
     #[serde(flatten)]
     pub query: Query,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PressKeyArgs {
+    /// An egui key name, e.g. `Enter`, `Tab`, `Escape`, `Backspace`, `ArrowLeft`, `A`.
     pub key: String,
     #[serde(default)]
     pub modifiers: PressKeyModifiers,
@@ -611,10 +597,7 @@ pub struct GetWidgetResult {
 /// Lifecycle tools — connection management, served directly by [`Server`].
 #[tool_router(router = lifecycle_router)]
 impl Server {
-    /// Connect to a running egui app's inspection port (an app built with eframe's `inspection` feature, launched with `EGUI_INSPECTION` set).
-    /// Defaults to 127.0.0.1:5719.
-    /// Retries until `timeout_secs` elapses.
-    /// On success the app-driving tools start working (they are always listed, but error until an app is attached).
+    /// Connect to a running egui app's inspection port (eframe's `inspection` feature, launched with `EGUI_INSPECTION` set), retrying until `timeout_secs`.
     #[tool(
         title = "Attach to app",
         annotations(
@@ -647,7 +630,6 @@ impl Server {
     }
 
     /// Disconnect from the attached app.
-    /// App-driving tools remain available but return an error until `attach` is called again.
     #[tool(
         title = "Disconnect",
         annotations(
@@ -683,9 +665,8 @@ impl Server {
 /// App-driving tools — each needs an attached app.
 #[tool_router]
 impl UiServer {
-    /// Capture the current frame as a PNG screenshot.
-    /// Defaults to logical-point resolution (`pixels_per_point: 1.0`) so pixels align with `click`/`widget_tree` coordinates; pass a higher `pixels_per_point` for detail, or `save_path` to also write it to disk.
-    /// Requires the app window to be visible — a fully-occluded or minimized window can't render a frame to capture (notably on macOS), so the call times out; bring the window to the foreground first.
+    /// Capture the current frame as a PNG.
+    /// Needs a visible window: a fully covered or minimized one renders no frame (notably on macOS), so the call times out.
     #[tool(
         title = "Screenshot",
         annotations(
@@ -719,16 +700,8 @@ impl UiServer {
     // The return type is spelled `Result<Json<…>, ToolError>` rather than the `ToolResult` alias
     // on purpose: `#[tool]` derives the output schema by syntactically matching `Json<T>` /
     // `Result<Json<T>, _>`, and the alias would hide it, silently dropping the schema.
-    /// Walk the app's widget tree and return the widgets matching the filter, nested by ancestry: each one carries the matches from its own subtree in `children`.
-    /// Widgets in between that don't match are skipped, so a `children` entry is a descendant, not necessarily a direct child.
-    /// `role`, if given, is a role name (e.g. `Button`, `Label`), matched case-insensitively; an unknown role errors with the roles present in the tree.
-    /// `limit` (200 by default) caps how many widgets come back: whole levels are kept from the top down, so the app's structure survives and the leaves go first, and any widget whose children were cut reports how many in `omitted_children`.
-    /// `root` starts the walk at one widget instead of the app's root — pass the `id` of a widget that reported `omitted_children` to see that part of the tree in full.
-    /// `exclude` leaves a subtree out — pass a widget `id`, or the same constraints the filter takes — and takes everything below it with it; use it to skip a panel whose text would otherwise answer every query.
-    /// Use the returned `id` with `click`, `type_text`, or `get_widget`.
-    /// The widgets are abridged — call `get_widget` with an `id` for one widget's full detail, including its `bounds` (logical points, its center is where `click` lands), its parent, and its text in full.
-    /// `label` and `value` are cut short at 100 characters, marked with a trailing ` […]`; the filters still match against the whole text, so a phrase past the cut still finds its widget.
-    /// Empty scaffolding is dropped: a widget with no children, no `label`, no `value`, and no `role` (a `role` of `Unknown` is reported as none) never appears.
+    /// List the widgets matching the filter, nested by ancestry: `children` holds the matches below a widget, not only its direct children.
+    /// Abridged: no `bounds`, and a `label` or `value` over 100 characters is cut short with a trailing ` […]` (filters still match the full text). `get_widget` returns one widget in full.
     #[tool(
         title = "Widget tree",
         annotations(read_only_hint = true, open_world_hint = false)
@@ -756,8 +729,7 @@ impl UiServer {
         Ok(Json(WidgetTreeResult { nodes }))
     }
 
-    /// Return a single widget by id (from `widget_tree`), in full detail: its `bounds` in logical points, its `parent_id`, its state, and its `label`/`value` untruncated.
-    /// This is the follow-up to `widget_tree`, which omits `bounds` and cuts long text short to stay compact.
+    /// One widget in full: its `bounds` in logical points (`click` lands on their center), `parent_id`, state, and uncut `label`/`value`.
     // Spelled-out `Result<Json<…>, ToolError>` (not the `ToolResult` alias) so `#[tool]` derives
     // the output schema — see `widget_tree`.
     #[tool(
@@ -782,10 +754,7 @@ impl UiServer {
         Ok(Json(GetWidgetResult { node }))
     }
 
-    /// Click the center of a widget's bounding box, or a raw `pos` in logical points.
-    /// Specify either a locator (`id` from `widget_tree`, `role`, or a text match — prefer `content_contains`, which matches `label` or `value`; `label_contains`/`value_contains` match just one field) or `pos: { x, y }`.
-    /// `button` defaults to `primary` (accepts `primary`/`secondary`/`middle`/`extra1`/`extra2`, or aliases `left`/`right`).
-    /// `count: 2` → double-click, `3` → triple.
+    /// Click the center of a widget, or a raw `pos`.
     #[tool(
         title = "Click",
         annotations(
@@ -832,8 +801,8 @@ impl UiServer {
         })))
     }
 
-    /// Move the pointer over a widget (or raw `pos`) without clicking.
-    /// Tooltips and hover popups only appear after a short delay — follow with `wait_for` (e.g. its `min_steps`) to let them settle before reading the tree or screenshotting.
+    /// Move the pointer over a widget, or a raw `pos`, without clicking.
+    /// Tooltips appear after a delay: follow with `wait_for` (`min_steps`) before reading them.
     #[tool(
         title = "Hover",
         annotations(
@@ -854,8 +823,7 @@ impl UiServer {
         })))
     }
 
-    /// Send a mouse wheel scroll over a widget (or raw `pos`).
-    /// `delta` is in logical points: positive Y scrolls down (reveals content below); positive X scrolls right.
+    /// Scroll the mouse wheel over a widget, or a raw `pos`.
     #[tool(
         title = "Scroll",
         annotations(
@@ -892,9 +860,7 @@ impl UiServer {
         })))
     }
 
-    /// Primary-button drag from `start` to `end`.
-    /// Each target accepts the same fields as `click`: locator (`id`/`content_contains`/`role`/`label_contains`/`value_contains`) or `pos: {x, y}`.
-    /// `steps` controls how many intermediate pointer-move events are emitted between press and release.
+    /// Drag with the primary button from `start` to `end`.
     #[tool(
         title = "Drag",
         annotations(
@@ -977,10 +943,8 @@ impl UiServer {
         ))
     }
 
-    /// Poll the widget tree until its conditions hold, or until `timeout_secs` elapses.
-    /// Waits until at least `min_matches` visible widgets match the filter (when one is given) *and* at least `min_steps` frames have rendered since the call began.
-    /// The text filter is `role` and/or one of `content_contains` (matches `label` or `value` — prefer this; e.g. monospace/`Label` text lives in `value`), `label_contains`, `value_contains`.
-    /// Requires a filter (`content_contains`/`role`/`label_contains`/`value_contains`) or a non-zero `min_steps`.
+    /// Poll until at least `min_matches` visible widgets match the filter and `min_steps` frames have rendered, or until `timeout_secs`.
+    /// Needs a filter or a non-zero `min_steps`.
     #[tool(
         title = "Wait for widgets",
         annotations(read_only_hint = true, open_world_hint = false)
@@ -1045,8 +1009,8 @@ impl UiServer {
         }
     }
 
-    /// Type text into the currently focused widget.
-    /// Optionally focus a widget first (by `id`, `role`, or a text match — `content_contains`/`label_contains`/`value_contains`) — this uses an `AccessKit` focus request, not a click, so it won't move the cursor or clear an existing text selection.
+    /// Type into the focused widget, or into the widget given, after focusing it.
+    /// Focusing is an `AccessKit` focus request, not a click, so the cursor and selection stay put.
     #[tool(
         title = "Type text",
         annotations(
@@ -1097,8 +1061,7 @@ impl UiServer {
         })))
     }
 
-    /// Send a key press (down + up) to the focused widget.
-    /// `key` is an egui key name such as `Backspace`, `Delete`, `Enter`, `Tab`, `A`–`Z`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `Escape`.
+    /// Press and release a key in the focused widget.
     #[tool(
         title = "Press key",
         annotations(
@@ -1142,11 +1105,9 @@ impl UiServer {
         ))
     }
 
-    /// Execute a sequence of app-driving tool calls in one round trip (the connection tools `attach`/`disconnect`/`status` are not available here).
-    /// Stops on the first error.
-    /// Results are emitted in execution order, interleaved: each step contributes one JSON text item followed by any image items it produced (e.g. screenshots).
-    /// `batch` cannot be nested.
-    /// Use this to act and observe in one call, e.g. a `click` then a `widget_tree` or `screenshot`.
+    /// Run app-driving tool calls in order in one round trip, stopping at the first error.
+    /// Each step returns one JSON text item, then any images it produced.
+    /// Not for `attach`, `disconnect`, `status` or a nested `batch`.
     #[tool(
         title = "Batch",
         annotations(
@@ -1217,25 +1178,15 @@ impl UiServer {
 /// per-tool descriptions cover each command in isolation; this establishes the cross-cutting
 /// workflow — the observe→act→verify loop and the prefer-locators convention — that an agent
 /// otherwise has to infer.
-const INSTRUCTIONS: &str = r#"This mcp drives a live egui app: it reads the app's accessibility tree and synthesizes real input events. Work in an observe → act → verify loop.
+const INSTRUCTIONS: &str = r#"This MCP drives a live egui app: it reads the app's accessibility tree and synthesizes real input. Work in an observe → act → verify loop.
 
-Getting oriented:
-- Call `attach` first (check `status` if unsure); the app-driving tools return "no app connected" until then.
-- Start most tasks with `widget_tree` to discover widgets and their ids, and/or `screenshot` to see the rendered frame.
-- When a widget reports `omitted_children`, query `widget_tree` again with that widget's `id` as `root` to walk just that part of the app.
-- `widget_tree` returns an abridged tree: no `bounds`, and text over 100 characters cut short. A trailing ` […]` in a `label` or `value` means exactly that — the text goes on, and `get_widget` on that widget's `id` returns all of it, along with its `bounds` in logical points and its parent. Filters always match the full text, so searching for a phrase from past the cut still finds the widget.
-
-Targeting widgets:
-- Prefer locators — an `id` from `widget_tree`, a `role`, or a text match — over a raw `pos`. Locators resolve to the widget's current position and survive layout changes; reach for `pos` only when nothing matches.
-- For text matches prefer `content_contains`: it matches a widget's `label` (accessible name) OR its `value`. This matters because many widgets (`Label`, monospace text, counters) carry their text in `value` with an empty `label`, so `label_contains` alone silently misses them. Use `label_contains`/`value_contains` only when you specifically need to match one field.
-- A locator in an action must match exactly one widget. If it matches several, the call errors and lists the candidates — narrow the filter (add a `role`, or switch to a more specific text match) or target a specific `id`. Use `widget_tree` when you want every match.
-
-Acting and verifying:
-- After an action that changes the UI, confirm it landed: `widget_tree` for the expected state, `screenshot` to look, or `wait_for` to poll until async or animated UI settles.
-- Use `batch` to act and observe in one round trip (e.g. `click` then `screenshot`), avoiding an extra turn.
-
-Conventions:
-- Everything is in logical points, one shared coordinate frame: raw `pos`, `resize` dimensions, the `bounds` from `get_widget`, and a default (`pixels_per_point: 1.0`) `screenshot`. So a widget's `bounds` center is exactly where to `click`, and a pixel in the screenshot is a logical point. There is no fixed screen size; use `resize` to set the viewport."#;
+- Call `attach` first; the other tools return "no app connected" until then.
+- Observe with `widget_tree` (widgets and their ids) and `screenshot`.
+- Target widgets by `id`, `role` or a text match rather than a raw `pos`: a locator follows the widget when the layout moves.
+- Match text with `content_contains`, which checks `label` and `value`. Many widgets, such as `Label`, carry their text in `value`, so `label_contains` alone misses them.
+- An action's locator must match exactly one widget; on several, the error lists them.
+- After an action, verify with `widget_tree`, `screenshot`, or `wait_for` for UI that settles over time. `batch` acts and observes in one round trip.
+- Everything is in logical points: `pos`, `bounds`, `resize`, and a default `screenshot`, whose pixels are logical points."#;
 
 /// How long a client may keep the tool list without asking again.
 const TOOL_LIST_TTL: Duration = Duration::from_mins(5);
@@ -1377,6 +1328,14 @@ mod tests {
             result["ttlMs"]
         );
         assert_eq!(result["cacheScope"], "public");
+    }
+
+    /// Claude Code keeps the first 2048 characters of a server's instructions and drops the
+    /// rest, so anything past that never reaches the agent.
+    #[test]
+    fn instructions_fit_claude_codes_limit() {
+        let chars = INSTRUCTIONS.chars().count();
+        assert!(chars <= 2048, "instructions are {chars} characters");
     }
 
     #[test]
